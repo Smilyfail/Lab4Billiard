@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import at.fhv.sysarch.lab4.game.Cue;
+import at.fhv.sysarch.lab4.physics.Physics;
 import org.dyn4j.dynamics.BodyFixture;
 import org.dyn4j.geometry.Circle;
 import org.dyn4j.geometry.Polygon;
@@ -23,8 +25,11 @@ public class Renderer extends AnimationTimer {
     private long lastUpdate;
     private List<Ball> balls;
     private Table table;
+    private Cue cue;
 
     private final GraphicsContext gc;
+
+    private final Physics physics;
 
     private final double centerX;
     private final double centerY;
@@ -48,11 +53,11 @@ public class Renderer extends AnimationTimer {
 
     private Optional<FrameListener> frameListener;
 
-    public Renderer(final GraphicsContext gc, 
-        int sceneWidth, int sceneHeight) {
+    public Renderer(final GraphicsContext gc, Physics physics, int sceneWidth, int sceneHeight) {
         this.gc = gc;
-
+        this.physics = physics;
         this.balls = new ArrayList<>();
+        this.cue = new Cue();
         
         this.centerX = (double) sceneWidth * 0.5;
         this.centerY = (double) sceneHeight * 0.5;
@@ -73,6 +78,8 @@ public class Renderer extends AnimationTimer {
 
         this.gc.setStroke(Color.WHITE);
     }
+
+    public Cue getCue() { return cue; }
 
     public void setStrikeMessage(String strikeMessage) {
         this.strikeMessage = strikeMessage;
@@ -136,6 +143,7 @@ public class Renderer extends AnimationTimer {
     public void handle(long now) {
         double dt = (double) (now - lastUpdate) / 1000_000_000.0;
 
+        this.physics.getWorld().update(dt);
         this.frameListener.ifPresent(l -> l.onFrame(dt));
 
         this.clearWithColorBackground();
@@ -228,7 +236,20 @@ public class Renderer extends AnimationTimer {
     }
 
     private void drawCue() {
-        // TODO: draw cue
+        if (cue.inUse()) {
+            this.gc.setTransform(this.jfxCoords);
+            this.gc.setStroke(Color.SANDYBROWN);
+            this.gc.setLineWidth(10);
+
+            // This must be last
+            // isPresent-checks are in inUse()
+            this.gc.strokeLine(
+                    cue.getStartX().get(),
+                    cue.getStartY().get(),
+                    cue.getEndX().get(),
+                    cue.getEndY().get()
+            );
+        }
     }
 
     private void drawFPS(double dt) {
