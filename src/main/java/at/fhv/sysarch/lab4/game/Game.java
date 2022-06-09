@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import at.fhv.sysarch.lab4.physics.BallPocketedListener;
 import at.fhv.sysarch.lab4.physics.BallsCollisionListener;
@@ -11,9 +12,11 @@ import at.fhv.sysarch.lab4.physics.ObjectsRestListener;
 import at.fhv.sysarch.lab4.physics.Physics;
 import at.fhv.sysarch.lab4.rendering.Renderer;
 import javafx.scene.input.MouseEvent;
+import org.dyn4j.collision.AbstractCollidable;
 import org.dyn4j.dynamics.Body;
 import org.dyn4j.dynamics.RaycastResult;
 import org.dyn4j.geometry.Ray;
+import org.dyn4j.geometry.Transform;
 import org.dyn4j.geometry.Vector2;
 
 public class Game implements BallPocketedListener, BallsCollisionListener, ObjectsRestListener {
@@ -29,6 +32,8 @@ public class Game implements BallPocketedListener, BallsCollisionListener, Objec
     private boolean foulOccurred = false;
     private boolean whiteIsPocketed = false;
     private boolean whiteTouchedColor = false;
+
+    private Transform whiteBallPosition = new Transform();
 
     private double physicsStartX;
     private double physicsStartY;
@@ -71,6 +76,8 @@ public class Game implements BallPocketedListener, BallsCollisionListener, Objec
     }
 
     public void onMouseReleased(MouseEvent e) {
+        whiteBallPosition = ((Ball) physics.getWorld().getBodies().stream().map(AbstractCollidable::getUserData).filter(object -> object instanceof Ball && ((Ball) object).isWhite()).findFirst().get()).getBody().getTransform().copy();
+
         renderer.getCue().release();
 
         if (!isCalculatingResults) {
@@ -86,23 +93,23 @@ public class Game implements BallPocketedListener, BallsCollisionListener, Objec
 
                 if (rayHitBall.isPresent()) {
                     isCalculatingResults = true;
+
                     renderer.setStrikeMessage("Calculating ...");
                     renderer.setFoulMessage("");
 
                     Body ballBody = rayHitBall.get().getBody();
                     Ball ball = (Ball) ballBody.getUserData();
 
-                    if (!ball.isWhite()) {
+                    if (!foulOccurred && !ball.isWhite()) {
+                        foulOccurred = true;
                         renderer.setFoulMessage("Cue hit color");
 
-                        if (!foulOccurred) {
-                            if (currentPlayer == Player.ONE) {
-                                playerOneScore--;
-                                renderer.setPlayer1Score(playerOneScore);
-                            } else {
-                                playerTwoScore--;
-                                renderer.setPlayer2Score(playerTwoScore);
-                            }
+                        if (currentPlayer == Player.ONE) {
+                            playerOneScore--;
+                            renderer.setPlayer1Score(playerOneScore);
+                        } else {
+                            playerTwoScore--;
+                            renderer.setPlayer2Score(playerTwoScore);
                         }
                     }
 
@@ -155,7 +162,7 @@ public class Game implements BallPocketedListener, BallsCollisionListener, Objec
 
             balls.add(b);
         }
-       
+
         this.placeBalls(balls);
 
         Ball.WHITE.setPosition(Table.Constants.WIDTH * 0.25, 0);
@@ -169,20 +176,18 @@ public class Game implements BallPocketedListener, BallsCollisionListener, Objec
 
     @Override
     public boolean onBallPocketed(Ball b) {
-        if (b.isWhite()) {
+        if (!foulOccurred && b.isWhite()) {
+            foulOccurred = true;
+            whiteIsPocketed = true;
             renderer.setFoulMessage("White pocketed");
 
-            if (!foulOccurred) {
-                if (currentPlayer == Player.ONE) {
-                    playerOneScore--;
-                    renderer.setPlayer1Score(playerOneScore);
-                } else {
-                    playerTwoScore--;
-                    renderer.setPlayer2Score(playerTwoScore);
-                }
+            if (currentPlayer == Player.ONE) {
+                playerOneScore--;
+                renderer.setPlayer1Score(playerOneScore);
+            } else {
+                playerTwoScore--;
+                renderer.setPlayer2Score(playerTwoScore);
             }
-
-            whiteIsPocketed = true;
         }
 
         if (!foulOccurred) {
@@ -211,7 +216,7 @@ public class Game implements BallPocketedListener, BallsCollisionListener, Objec
     public void objectsAreResting() {
         if (isCalculatingResults) {
             if (whiteIsPocketed) {
-                Ball.WHITE.setPosition(Table.Constants.WIDTH * 0.25, 0);
+                Ball.WHITE.setPosition(whiteBallPosition.getTranslationX() , whiteBallPosition.getTranslationY());
                 Body white = Ball.WHITE.getBody();
                 white.setLinearVelocity(new Vector2(0,0));
                 physics.getWorld().addBody(white);
@@ -224,7 +229,7 @@ public class Game implements BallPocketedListener, BallsCollisionListener, Objec
 
                 if (currentPlayer == Player.ONE) {
                     playerOneScore--;
-                    renderer.setPlayer1Score(--playerOneScore);
+                    renderer.setPlayer1Score(playerOneScore);
                 } else {
                     playerTwoScore--;
                     renderer.setPlayer2Score(playerTwoScore);
@@ -239,6 +244,20 @@ public class Game implements BallPocketedListener, BallsCollisionListener, Objec
 
             renderer.setActionMessage("Player " + currentPlayer.name() + " is now on turn!");
             renderer.setStrikeMessage("");
+
+            // Respawn balls if table and / or white ball are remaining
+            if (physics.getWorld().getBodies().size() <= 2) {
+                List<Ball> balls = new ArrayList<>();
+
+                for (Ball b : Ball.values()) {
+                    if (b == Ball.WHITE)
+                        continue;
+
+                    balls.add(b);
+                }
+
+                this.placeBalls(balls.subList(0, balls.size() - 1));
+            }
 
             isCalculatingResults = false;
         }
